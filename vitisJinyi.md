@@ -48,6 +48,7 @@ vncserver -geometry 2048x1024
 >> cd sw_emu
 >> ```
 >> Then, after changing into the target build directory, enter the following commands to build the host application and device binary:
+>> 
 >> Unlikely to data center card, it is mandatory to specify --platform option.
 >> ```
 >> $CXX -Wall -g -std=c++11 ../../src/host.cpp -o ./app.exe -I/usr/include/xrt -lOpenCL -lpthread -lrt -lstdc++ 
