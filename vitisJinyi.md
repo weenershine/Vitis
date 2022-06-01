@@ -56,7 +56,7 @@ vncserver -geometry 2048x1024
 > **2. SW Emulation**
 >> To build for software emulation, enter the following commands to setup the target build directory:
 >> ```
->> cd /local/jinxu/Git/Vitis-Tutorials/Getting_Started/Vitis/example/zcu102
+>> cd /local/jinxu/Vitis-Tutorials/Getting_Started/Vitis/example/zcu102
 >> mkdir sw_emu 
 >> cp xrt.ini sw_emu
 >> cp run_sw_emu.sh sw_emu
@@ -100,10 +100,54 @@ vncserver -geometry 2048x1024
 >>TCP Port :7717
 >>tcp client connected to the server
 >>```
+
+>>The above files that were created during this exercise:
 >>```
 >>root@zynqmp-common-2021_2:/media/sd-mmcblk0p1# ls
 >>Image  a.xclbin  app.exe  boot.scr  data  opencl_trace.csv  run_sw_emu.sh  summary.csv	vadd.xclbin  xrt.ini  xrt.run_summary
 >>```
->
-
-
+>>
+>>+ app.exe: The compiled and linked host application
+>>
+>>+ vadd.xclbin: The device binary linking the kernel and target platform
+>>
+>>+ opencl_trace.csv: A report of events occurring during the application runtime
+>>
+>>+ summary.csv: A report of the application profile
+>>
+>>+ xrt.ini: The runtime initilization file
+>>
+>>+ xrt.run_summary: A summary report of the events of the application runtime
+>>
+>>Terminate QEMU:`shudown -h now` 
+>>
+>>or open another termimal, check the process:`ps aux` and then:`kill -9 <QEMU_port>`
+>>
+> **3. HW Emulation**
+> 
+>>Before HW emulation, if you terminated the previous terminal, set up the environment again.
+>>
+>>```source /opt/Xilinx/xilinx_setup_2021.2-zcu702.sh```
+>>
+>>To build for hardware emulation, enter the following commands to setup the target build directory:
+>>```
+>>cd /local/jinxumkdir /Vitis-Tutorials/Getting_Started/Vitis/example/zcu102
+>>mkdir hw_emu
+>>cp xrt.ini hw_emu
+>>cp run_hw_emu.sh hw_emu
+>>cd hw_emu
+>>```
+>>Enter the following commands to build the host application and device binary:
+>>```
+>>$CXX -Wall -g -std=c++11 ../../src/host.cpp -o app.exe -I/usr/include/xrt -lOpenCL -lpthread -lrt -lstdc++ -O
+>>v++ -c -t hw_emu --config ../../src/zcu102.cfg --platform $PLATFORM_REPO_PATHS/xilinx_zcu102_base_202120_1.xpfm -k vadd -I../../src ../../src/vadd.cpp -o vadd.xo
+>>v++ -l -t hw_emu --config ../../src/zcu102.cfg --platform $PLATFORM_REPO_PATHS/xilinx_zcu102_base_202120_1.xpfm ./vadd.xo -o vadd.xclbin
+>>v++ -p -t hw_emu --config ../../src/zcu102.cfg --platform $PLATFORM_REPO_PATHS/xilinx_zcu102_base_202120_1.xpfm ./vadd.xclbin --package.out_dir package --package.rootfs ${ROOTFS}/rootfs.ext4 --package.sd_file ${ROOTFS}/Image --package.sd_file xrt.ini --package.sd_file app.exe --package.sd_file vadd.xclbin --package.sd_file ./run_hw_emu.sh
+>>```
+>>The only difference with Software Emulation is the v++ target `-t` option which is changed from `sw_emu` to `hw_emu`. All other options remain the same.
+>>
+>>Building for hardware emulation takes more time than for software emulation, but still much less than when targeting the hardware accelerator card. 
+>>
+>>After the build process completes, you can launch the hardware emulation run by using the launch script generated during the packaging step:
+>>`./package/launch_hw_emu.sh `
+>>
