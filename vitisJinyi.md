@@ -38,6 +38,21 @@ vncserver -geometry 2048x1024
 >>Instead of above, we use the command:
 >>`source /opt/Xilinx/xilinx_setup_2021.2-zcu702.sh`
 >>
+>>**xilinx_setup_2021.2-zcu702.sh**
+>>```
+>>#setup XILINX_VITIS and XILINX_VIVADO variables
+>>source /opt/Xilinx/Vitis/2021.2/settings64.sh
+>>#setup XILINX_XRT
+>>source /opt/xilinx/xrt/setup.sh
+>>unset LD_LIBRARY_PATH
+>>#source /opt/Xilinx/Vitis/2021.2/data/emulation/qemu/unified_qemu_v5_0/environment-setup-aarch64-xilinx-linux
+>>#available platforms for use with your Vitis IDE
+>>export PLATFORM_REPO_PATHS=/opt/xilinx/platforms/xilinx_zcu102_base_202120_1
+>>#export LD_LIBRARY_PATH=/opt/Xilinx/Vitis/2020.2/lib/lnx64.o/Default
+>>export ROOTFS=/opt/Xilinx/xilinx-zynqmp-common-v2021.2
+>>export SYSROOT=/opt/petalinux/2021.2/sysroots #/cortexa72-cortexa53-xilinx-linux/
+>>source /opt/petalinux/2021.2/environment-setup-cortexa72-cortexa53-xilinx-linux
+>>```
 > **2. SW Emulation**
 >> To build for software emulation, enter the following commands to setup the target build directory:
 >> ```
@@ -56,6 +71,6 @@ vncserver -geometry 2048x1024
 >> v++ -l -t sw_emu --config ../../src/zcu102.cfg --platform $PLATFORM_REPO_PATHS/xilinx_zcu102_base_202120_1.xpfm ./vadd.xo -o ./vadd.xclbin 
 >> v++ -p -t sw_emu --config ../../src/zcu102.cfg --platform $PLATFORM_REPO_PATHS/xilinx_zcu102_base_202120_1.xpfm ./vadd.xclbin --package.out_dir ./package --package.rootfs ${ROOTFS}/rootfs.ext4 --package.sd_file ${ROOTFS}/Image --package.sd_file ./xrt.ini --package.sd_file ./app.exe --package.sd_file ./vadd.xclbin --package.sd_file ./run_sw_emu.sh 
 >> ```
-
+>>a brief explanation of each of these four commands refer to [Build and Run the Embedded Processor Application](https://github.com/Xilinx/Vitis-Tutorials/blob/2021.2/Getting_Started/Vitis/Part4-embedded_platform.md)
 
 * <Vitis_install_path>: 
