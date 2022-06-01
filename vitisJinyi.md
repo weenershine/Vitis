@@ -71,6 +71,39 @@ vncserver -geometry 2048x1024
 >> v++ -l -t sw_emu --config ../../src/zcu102.cfg --platform $PLATFORM_REPO_PATHS/xilinx_zcu102_base_202120_1.xpfm ./vadd.xo -o ./vadd.xclbin 
 >> v++ -p -t sw_emu --config ../../src/zcu102.cfg --platform $PLATFORM_REPO_PATHS/xilinx_zcu102_base_202120_1.xpfm ./vadd.xclbin --package.out_dir ./package --package.rootfs ${ROOTFS}/rootfs.ext4 --package.sd_file ${ROOTFS}/Image --package.sd_file ./xrt.ini --package.sd_file ./app.exe --package.sd_file ./vadd.xclbin --package.sd_file ./run_sw_emu.sh 
 >> ```
->>a brief explanation of each of these four commands refer to [Build and Run the Embedded Processor Application](https://github.com/Xilinx/Vitis-Tutorials/blob/2021.2/Getting_Started/Vitis/Part4-embedded_platform.md)
+>>A brief explanation of these four commands refers to [Build and Run the Embedded Processor Application](https://github.com/Xilinx/Vitis-Tutorials/blob/2021.2/Getting_Started/Vitis/Part4-embedded_platform.md)
+>>
+>>After the build process completes, launch the software emulation (start the Xilinx Quick Emulation (QEMU) environment and initiate the boot sequence):
+>>
+>>`./package/launch_sw_emu.sh -forward-port 1440 22`
+>>
+>>Once Linux has finished booting, you will see following comments
+>>```
+>>root@zynqmp-common-2021_2:~# xinit: giving up 
+>>xinit: unable to connect to X server: Connection refused
+>>xinit: server error
+>>Enabling notebook extension jupyter-js-widgets/extension...
+>>      - Validating: OK
+>>[C 12:38:18.687 NotebookApp] Bad config encountered during initialization: No such notebook dir: ''/usr/share/example-notebooks''
+>>```
+>>Then enter the following commands from within the QEMU environment to run the example program:
+>>```
+>>cd /media/sd-mmcblk0p1
+>>export XILINX_XRT=/usr
+>>export XCL_EMULATION_MODE=sw_emu
+>>./app.exe
+>>```
+>>The following messages indicate that the run completed successfully:
+>>```
+>>INFO: Found Xilinx Platform
+>>INFO: Loading 'vadd.xclbin'
+>>TCP Port :7717
+>>tcp client connected to the server
+>>```
+>>```
+>>root@zynqmp-common-2021_2:/media/sd-mmcblk0p1# ls
+>>Image  a.xclbin  app.exe  boot.scr  data  opencl_trace.csv  run_sw_emu.sh  summary.csv	vadd.xclbin  xrt.ini  xrt.run_summary
+>>```
+>
 
-* <Vitis_install_path>: 
+
