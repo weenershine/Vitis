@@ -151,3 +151,27 @@ vncserver -geometry 2048x1024
 >>After the build process completes, you can launch the hardware emulation run by using the launch script generated during the packaging step:
 >>`./package/launch_hw_emu.sh `
 >>
+>>Once Linux has finished booting, enter the following commands at the QEMU command prompt to run the example program:
+>>```
+>>cd /media/sd-mmcblk0p1
+>>export XILINX_XRT=/usr
+>>export XCL_EMULATION_MODE=hw_emu
+>>./app.exe
+>>```
+>>You should see messages that say TEST PASSED indicating that the run completed successfully
+>>
+>>Running the application in the QEMU generates some report files during the run. These files and reports are the results of the run process targeting the software emulation build. To examine these files later, we must retrieve them from the QEMU environment and copy them into our local system, for example: `scp -P 1440 root@127.0.0.1:/media/sd-mmcblk0p1/xrt.run_summary ./xrt.run_summary`
+>>
+>>Terminate QEMU:`shudown -h now` 
+>>
+>>or open another termimal, check the process:`ps aux` and then:`kill -9 <QEMU_port>`
+> **4. Targeting Hardware**
+> (no necessary)
+>>To build for the hardware target, enter the following commands to setup the target build directory:
+>>```
+>>cd <Path to the cloned repo>/Getting_Started/Vitis/example/zcu102
+>>mkdir hw
+>>cp xrt.ini hw
+>>cp run_hw.sh hw
+>>cd hw
+>>```
