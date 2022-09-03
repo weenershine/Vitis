@@ -1,7 +1,7 @@
-# OpenCL编程详细解析
+# OpenCL+Vitis编程详细解析
 
-OpenCL作为一门开源的异构并行计算语言，设计之初就是使用一种模型来模糊各种硬件差异。
-作为软件开发人员，关注的就是编程模型。
+OpenCL作为一门开源的异构并行计算语言，用来模糊各种硬件差异。
+
 
 Vitis 核开发套件支持 OpenCL 1.2 API，如 https://www.khronos.org/registry/OpenCL/specs/
 opencl-1.2.pdf 中所述。如需了解有关 OpenCL 的 XRT 扩展的说明，请访问 https://xilinx.github.io/XRT/2020.2/html/
@@ -199,6 +199,8 @@ fclose(f);
 return size;
 }
 ```
+
+## 7.
 
 
 
