@@ -24,7 +24,7 @@ OpenCL+Vitis程序的流程细节如下：
 6. Program (for FPGA)
 7. Setting Kernel（for FPGA）
 8. Buffer Transmission （for FPGA）
-9.  
+9. Kernel Excution
 10.加载 OpenCL 内核程序并创建一个 program 对象
 11. 为指定的 device 编译 program 中的 kernel
 12. 创建指定名字的 kernel 对象
@@ -245,20 +245,73 @@ err |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &dev_buf1);
 err |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &dev_buf2);
 ```
 
-*虽然 OpenCL 允许在内核入队前随时设置内核实参，但应尽早设置内核实参。如果在 XRT 确定器件上缓冲器的放置位置之前，移植该缓冲器，那么 XRT 将出错。因此，需在任意缓冲器上执行任意入队操作（例如，clEnqueueMigrateMemObjects）之前设置内核实参。
+虽然 OpenCL 允许在内核入队前随时设置内核实参，但应尽早设置内核实参。如果在 XRT 确定器件上缓冲器的放置位置之前，移植该缓冲器，那么 XRT 将出错。因此，需在任意缓冲器上执行任意入队操作（例如，clEnqueueMigrateMemObjects）之前设置内核实参。
 
 对于所有内核缓冲器实参，必须在器件全局存储器上**分配缓冲器**。
 
-*但有时，开始内核执行之前无需缓冲器内容。例如，仅在内核执行期间填充输出缓冲器内容，因此内核执行前，这些内容无关紧要。在此情况下，应指定clEnqueueMigrateMemObject（含 CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED 标记），这样缓冲器移植就不涉及主机与器件之间的 DMA 操作，从而即可改善性能。
+>*有时，开始内核执行之前无需缓冲器内容。例如，仅在内核执行期间填充输出缓冲器内容，因此内核执行前，这些内容无关紧要。在此情况下，应指定clEnqueueMigrateMemObject（含 CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED 标记），这样缓冲器移植就不涉及主机与器件之间的 DMA 操作，从而即可改善性能。*
 
 ## 8. Buffer Transmission
 
-默认情况下，当内核链接到平台时，来自所有内核的存储器接口都连接到单个默认的全局存储体。因此，每次在该全局存储体上只能有 1 个计算单元 (CU) 执行数据传输，这就限制了应用的总体性能。
+有两种方法可用于分配存储缓冲器和传输数据：
+1. 由 XRT 分配缓冲器 (嵌入式主用)
+2. 使用主机指针缓冲器
 
-如果器件仅包含 1 个全局存储体，那么这是唯一选项。但是，如果器件包含多个全局存储体，可以通过在链接期间修改内核的存储器接口连接来自定义全局存储体连接，参考[将内核端口映射到存储器](https://docs.xilinx.com/r/2021.1-Chinese/ug1393-vitis-application-acceleration/%E5%B0%86%E5%86%85%E6%A0%B8%E7%AB%AF%E5%8F%A3%E6%98%A0%E5%B0%84%E5%88%B0%E5%AD%98%E5%82%A8%E5%99%A8)。针对不同内核或计算单元使用不同的独立存储体可以支持多个内核存储器接口进行数据并发读写，从而提升总体性能。
+为了最大限度提升从主机到全局存储器的吞吐量，单一缓冲器大小<=4GB 且 >=2MB。
+
+在嵌入式平台上，执行连续存储器分配更高效，在创建缓冲器时交由 XRT 来分配主机存储器。创建缓冲器时，分配是通过使用CL_MEM_ALLOC_HOST_PTR 标记来完成的，随后使用 clEnqueueMapBuffer 将已分配的存储器映射到用户空间指针。
+
+```
+// Two cl_mem buffer, for read and write by kernel
+cl_mem dev_mem_read_ptr = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR |
+CL_MEM_READ_ONLY,
+sizeof(int) * number_of_words, NULL, NULL);
+cl_mem dev_mem_write_ptr = clCreateBuffer(context, CL_MEM_ALLOC_HOST_PTR |
+CL_MEM_WRITE_ONLY,
+sizeof(int) * number_of_words, NULL, NULL);
+cl::Buffer in1_buf(context, CL_MEM_ALLOC_HOST_PTR | CL_MEM_READ_ONLY,
+sizeof(int) * DATA_SIZE, NULL, &err);
+// Setting arguments
+clSetKernelArg(kernel, 0, sizeof(cl_mem), &dev_mem_read_ptr);
+clSetKernelArg(kernel, 1, sizeof(cl_mem), &dev_mem_write_ptr);
+
+// Get Host side pointer of the cl_mem buffer object
+auto host_write_ptr =
+clEnqueueMapBuffer(queue,dev_mem_read_ptr,true,CL_MAP_WRITE,0,bytes,0,nullpt
+r,nullptr,&err);
+//clEnqueueMapBuffer API 可映射指定的缓冲器，并将 XRT 创建的指针返回到该映射区域
+auto host_read_ptr =
+clEnqueueMapBuffer(queue,dev_mem_write_ptr,true,CL_MAP_READ,0,bytes,0,nullpt
+r,nullptr,&err);
+// Fill up the host_write_ptr to send the data to the FPGA
+for(int i=0; i< MAX; i++) {
+host_write_ptr[i] = <.... >
+}
+//使用数据填充主机侧指针
+// Migrate //进行往来器件的数据传输
+cl_mem mems[2] = {host_write_ptr,host_read_ptr};
+clEnqueueMigrateMemObjects(queue,2,mems,0,0,nullptr,&migrate_event));
+// Schedule the kernel
+clEnqueueTask(queue,kernel,1,&migrate_event,&enqueue_event);
+// Migrate data back to host
+clEnqueueMigrateMemObjects(queue, 1, &dev_mem_write_ptr,
+CL_MIGRATE_MEM_OBJECT_HOST,1,&enqueue_event,
+&data_read_event);
+clWaitForEvents(1,&data_read_event);
+// Now use the data from the host_read_ptr
+```
 
 
 
+>*默认情况下，当内核链接到平台时，来自所有内核的存储器接口都连接到单个默认的全局存储体。因此，每次在该全局存储体上只能有 1 个计算单元 (CU) 执行数据传输，这就限制了应用的总体性能。*
+>
+>*如果器件仅包含 1 个全局存储体，那么这是唯一选项。但是，如果器件包含多个全局存储体，可以通过在链接期间修改内核的存储器接口连接来自定义全局存储体连接，参考[将内核端口映射到存储器](https://docs.xilinx.com/r/2021.1-Chinese/ug1393-vitis-application-acceleration/%E5%B0%86%E5%86%85%E6%A0%B8%E7%AB%AF%E5%8F%A3%E6%98%A0%E5%B0%84%E5%88%B0%E5%AD%98%E5%82%A8%E5%99%A8)。针对不同内核或计算单元使用不同的独立存储体可以支持多个内核存储器接口进行数据并发读写，从而提升总体性能。*
+
+
+子缓冲器: 
+从器件缓冲器中读取某一特定部分。
+
+## 9. Kernel Excution
 
 
 
