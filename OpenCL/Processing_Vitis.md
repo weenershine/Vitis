@@ -345,14 +345,6 @@ clEnqueueTask。
 
 
 
-
-
-
-
-
-
-## 11. 资源回收 （后FPGA处理）
-
 基于 OpenCL 队列的所有 API 调用均为异步调用。在命令队列中，当命令入队后，将立即返回这些命令。要暂停主机程序以等待结果，或者要解决命令之间的任何依赖关系，都可使用 API 调用（如 clFinish 或 clWaitForEvents）来阻止执行主机程序。
 
 ```
@@ -380,5 +372,19 @@ clWaitForEvents(1, &readevent);
 2. 从 FPGA 存储器到本地主机的数据传输是通过 clEnqueueReadBuffer 完成的。此处 clEnqueueReadBuffer的最后一个实参会返回事件对象，用于识别这条特定读取命令，并且可用于查询事件或者等待这条特定命令完成。clWaitForEvents 命令可指定单一事件（读取事件），并等待以确保数据完成后再验证数据。
 
 
+
+## 11. 资源回收 （后FPGA处理）
+
+在主机代码的最后，应使用适当的释放功能来释放所有已分配的资源。
+
+```
+clReleaseCommandQueue(Command_Queue);
+clReleaseContext(Context);
+clReleaseDevice(Target_Device_ID);
+clReleaseKernel(Kernel);
+clReleaseProgram(Program);
+free(Platform_IDs);
+free(Device_IDs);
+```
 
 
