@@ -13,6 +13,8 @@ opencl_extension.html。
 ![image](https://user-images.githubusercontent.com/49140300/188286801-d314191b-8ede-4f50-bf35-f6cf8cd7b58f.png)
 
 
+[Vitis-OpenCl样例](https://github.com/Xilinx/Vitis_Accel_Examples/tree/master/ocl_kernels)
+
 OpenCL+Vitis程序的流程细节如下：
 
 0. Include
