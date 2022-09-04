@@ -1,7 +1,8 @@
 # OpenCL+Vitis编程详细解析
 
 OpenCL作为一门开源的异构并行计算语言，用来模糊各种硬件差异。
-
+[OpenCl基本流程](https://zhuanlan.zhihu.com/p/445939233)
+[OpenCl视频入门](https://www.bilibili.com/video/BV1c54y1Y75t?p=2&vd_source=669f6fea14599939187b680ddc901c20)
 
 Vitis 核开发套件支持 OpenCL 1.2 API，如 https://www.khronos.org/registry/OpenCL/specs/
 opencl-1.2.pdf 中所述。如需了解有关 OpenCL 的 XRT 扩展的说明，请访问 https://xilinx.github.io/XRT/2020.2/html/
@@ -11,7 +12,8 @@ opencl_extension.html。
 
 ![image](https://user-images.githubusercontent.com/49140300/188286801-d314191b-8ede-4f50-bf35-f6cf8cd7b58f.png)
 
-OpenCL程序的流程大致如下：
+
+OpenCL+Vitis程序的流程细节如下：
 
 0. Include
 1. Platform
@@ -20,16 +22,18 @@ OpenCL程序的流程大致如下：
 4. Context
 5. CommandQeueu
 6. Program (for FPGA)
-7. Running time
-8. 加载 OpenCL 内核程序并创建一个 program 对象
-9. 为指定的 device 编译 program 中的 kernel
-10. 创建指定名字的 kernel 对象
-11. 为 kernel 创建内存对象
-12. 为 kernel 设置参数
-13. 在指定的 device 上创建 command queue
-14. 将要执行的 kernel 放入 command queue
-15. 将结果读回 host
-16. 资源回收
+7. Setting Kernel（for FPGA）
+8. Buffer Transmission （for FPGA）
+9.  
+10.加载 OpenCL 内核程序并创建一个 program 对象
+11. 为指定的 device 编译 program 中的 kernel
+12. 创建指定名字的 kernel 对象
+13. 为 kernel 创建内存对象
+14. 为 kernel 设置参数
+15. 在指定的 device 上创建 command queue
+16. 将要执行的 kernel 放入 command queue
+17. 将结果读回 host
+18. 资源回收
 
 ## 0. Include
 
@@ -200,15 +204,58 @@ return size;
 }
 ```
 
-## 7.
+## 7. Setting Kernel (for FPGA)
+
+完成 OpenCL 环境初始化后，主机应用即可随时向器件发出命令并与内核进行交互，首先进行内核设置。
+
+设置运行时环境（如识别device、创建context、commandqueue和program）后，主机应用应识别将在device上执行的Kernel并**设置内核实参**。
+
+使用 [OpenCL API clCreateKernel](https://registry.khronos.org/OpenCL/sdk/1.2/docs/man/xhtml/clCreateKernel.html) 访问 .xclbin 文件中所包含的内核（“program”）。cl_kernel 对象用于识别加载到 FPGA 内的程序中的内核，此内核可供主机应用运行。以下代码示例可识别加载的程序中定义的2个内核。
+
+```
+kernel1 = clCreateKernel(program, "<kernel_name_1>", &err);
+kernel2 = clCreateKernel(program, "<kernel_name_2>", &err); // etc
+```
+
+在 Vitis 软件平台中，可为内核对象设置两种类型的实参：
+1. 标量实参用于小型数据传输，例如，常量或配置类型数据。从主机应用角度来看，这些实参为只读实参，即内核的输入。
+2. 存储缓冲器实参则用于大型数据传输。值是所创建的存储器对象的指针，其context与程序和内核对象相关联。这些实参是内核的输入或输出。
+
+内核实参可使用 [clSetKernelArg](https://registry.khronos.org/OpenCL/sdk/1.2/docs/man/xhtml/clSetKernelArg.html) 命令来设置，以下示例演示了如何为 2 个标量实参和 2 个缓冲器实参设置内核实
+参。
+
+```
+// Create memory buffers
+cl_mem dev_buf1 = clCreateBuffer(context, CL_MEM_WRITE_ONLY |
+CL_MEM_USE_HOST_PTR, size, &host_mem_ptr1, NULL);
+cl_mem dev_buf2 = clCreateBuffer(context, CL_MEM_READ_ONLY |
+CL_MEM_USE_HOST_PTR, size, &host_mem_ptr2, NULL);
+
+int err = 0;
+// Setup scalar arguments
+cl_uint scalar_arg_image_width = 3840;
+err |= clSetKernelArg(kernel, 0, sizeof(cl_uint), &scalar_arg_image_width);
+cl_uint scalar_arg_image_height = 2160;
+err |= clSetKernelArg(kernel, 1, sizeof(cl_uint),
+&scalar_arg_image_height);
 
 
+// Setup buffer arguments
+err |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &dev_buf1);
+err |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &dev_buf2);
+```
 
+*虽然 OpenCL 允许在内核入队前随时设置内核实参，但应尽早设置内核实参。如果在 XRT 确定器件上缓冲器的放置位置之前，移植该缓冲器，那么 XRT 将出错。因此，需在任意缓冲器上执行任意入队操作（例如，clEnqueueMigrateMemObjects）之前设置内核实参。
 
+对于所有内核缓冲器实参，必须在器件全局存储器上**分配缓冲器**。
 
+*但有时，开始内核执行之前无需缓冲器内容。例如，仅在内核执行期间填充输出缓冲器内容，因此内核执行前，这些内容无关紧要。在此情况下，应指定clEnqueueMigrateMemObject（含 CL_MIGRATE_MEM_OBJECT_CONTENT_UNDEFINED 标记），这样缓冲器移植就不涉及主机与器件之间的 DMA 操作，从而即可改善性能。
 
+## 8. Buffer Transmission
 
+默认情况下，当内核链接到平台时，来自所有内核的存储器接口都连接到单个默认的全局存储体。因此，每次在该全局存储体上只能有 1 个计算单元 (CU) 执行数据传输，这就限制了应用的总体性能。
 
+如果器件仅包含 1 个全局存储体，那么这是唯一选项。但是，如果器件包含多个全局存储体，可以通过在链接期间修改内核的存储器接口连接来自定义全局存储体连接，参考[将内核端口映射到存储器](https://docs.xilinx.com/r/2021.1-Chinese/ug1393-vitis-application-acceleration/%E5%B0%86%E5%86%85%E6%A0%B8%E7%AB%AF%E5%8F%A3%E6%98%A0%E5%B0%84%E5%88%B0%E5%AD%98%E5%82%A8%E5%99%A8)。针对不同内核或计算单元使用不同的独立存储体可以支持多个内核存储器接口进行数据并发读写，从而提升总体性能。
 
 
 
