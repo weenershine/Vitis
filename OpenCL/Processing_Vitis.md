@@ -25,15 +25,8 @@ OpenCL+Vitis程序的流程细节如下：
 7. Setting Kernel（for FPGA）
 8. Buffer Transmission （for FPGA）
 9. Kernel Excution
-10.加载 OpenCL 内核程序并创建一个 program 对象
-11. 为指定的 device 编译 program 中的 kernel
-12. 创建指定名字的 kernel 对象
-13. 为 kernel 创建内存对象
-14. 为 kernel 设置参数
-15. 在指定的 device 上创建 command queue
-16. 将要执行的 kernel 放入 command queue
-17. 将结果读回 host
-18. 资源回收
+10. 将结果读回 host （事件同步）
+11. 资源回收 （后FPGA处理）
 
 ## 0. Include
 
@@ -313,12 +306,78 @@ clWaitForEvents(1,&data_read_event);
 
 ## 9. Kernel Excution
 
+通常主机应用所需的计算密集型任务可在单个内核内进行定义，并且此内核仅执行一次以处理整个范围内的所有数据。
+
+内核多次执行存在相关联的开销，因此调用单一整体式内核可以提升性能。
+
+虽然内核仅执行一次，并处理整个范围内的所有数据，但在内核硬件内部的 FPGA 上可实现并行化。只要经过正确编码，内核即可通过多种方法来实现并行化，例如，指令级并行化（循环流水线）和功能级并行化（数据流）。
+
+在将内核编译到 FPGA 上的单一硬件实例（或 CU）中时，执行内核的最简单的方法是使用 clEnqueueTask，如下所示。
+
+```
+err = clEnqueueTask(commands, kernel, 0, NULL, NULL);
+//虽然支持使用 clEnqueueNDRangeKernel（仅限 OpenCL 内核），但赛灵思建议使用
+clEnqueueTask。
+```
+
+但有时由于各种原因，无法使用单一 clEnqueueTask 来运行内核。例如，内核代码可能过大且过于复杂，导致在单次执行过程中执行所有计算密集型任务时，难以对代码进行最优化。
+
+有时，可将多个内核设计为在 FPGA 上并行执行不同任务，这需要执行多条排队命令。或者主机应用可能在很长一段时间内持续接受数据，且无法一次性同时处理所有数据。
+
+根据情况以及应用，可能需要将内核的数据和任务拆分为多条 clEnqueueTask 命令。在此情况下，可通过无序命令队列或有序命令队列来判定内核任务的处理方式，如 命令队列 中所述。此外，可将多个内核任务作为阻塞事件或者非阻塞事件来实现，如 事件同步 中所述。这些都可能影响设计性能。
+
+有三种不同的方法：
+
+1. 使用不同内核实现任务并行
+
+有时，主机应用所需的计算密集型任务可分为多个不同内核，这些不同内核设计为在 FPGA 上并行执行不同任务。例如，通过按无序命令队列来使用多条 clEnqueueTask 命令，即可让多个执行不同任务的内核并行运行。这样即可在FPGA 上实现任务并行。
+
+2. 空间数据并行化：增加计算单元数量
+
+有时候，主机应用所需的计算密集型任务可以跨同一内核的多个硬件实例或者跨计算单元来处理数据，以在 FPGA 上实现数据并行化。如果单个内核已编译为多个 CU，那么在单一无序命令队列中可以多次调用 clEnqueueTask 命令来支持数据并行化。每次调用 clEnqueueTask 都会调度不同 CU 中的数据工作负载，并且对其进行并行处理。
+
+3. 暂时性数据并行化：主机到内核数据流 （嵌入式不支持）
+
+有时，计算单元所处理的数据经由内核中的某一个处理阶段，进入下一个处理阶段。在此情况下，内核的第一个阶段可能处于空闲状态，可开始处理一组新数据。从本质上来看，内核就像是工厂组装线，它可以在接受新数据的同时，使原始数据沿组装线下行。
+
+
+## 10. 将结果读回 host （事件同步）
 
 
 
 
 
 
+
+
+
+## 11. 资源回收 （后FPGA处理）
+
+基于 OpenCL 队列的所有 API 调用均为异步调用。在命令队列中，当命令入队后，将立即返回这些命令。要暂停主机程序以等待结果，或者要解决命令之间的任何依赖关系，都可使用 API 调用（如 clFinish 或 clWaitForEvents）来阻止执行主机程序。
+
+```
+err = clEnqueueTask(command_queue, kernel, 0, NULL, NULL);
+// Execution will wait here until all commands in the command queue are
+finished
+clFinish(command_queue);
+
+// Create event, read memory from device, wait for read to complete, verify
+results
+cl_event readevent;
+// host memory for output vector
+int host_mem_output_ptr[MAX_LENGTH];
+//Enqueue ReadBuffer, with associated event object
+clEnqueueReadBuffer(command_queue, dev_mem_ptr, CL_TRUE, 0, sizeof(int) *
+number_of_words,
+host_mem_output_ptr, 0, NULL, &readevent );
+// Wait for clEnqueueReadBuffer event to finish
+clWaitForEvents(1, &readevent);
+// After read is complete, verify results
+```
+
+请注意以上示例中这些命令的使用方式：
+1. clFinish API 已显式用于阻止主机执行，直至内核执行完成为止。这是很有必要的，否则主机可能过早尝试从FPGA 缓冲器回读，并且可能读取垃圾数据。
+2. 从 FPGA 存储器到本地主机的数据传输是通过 clEnqueueReadBuffer 完成的。此处 clEnqueueReadBuffer的最后一个实参会返回事件对象，用于识别这条特定读取命令，并且可用于查询事件或者等待这条特定命令完成。clWaitForEvents 命令可指定单一事件（读取事件），并等待以确保数据完成后再验证数据。
 
 
 
